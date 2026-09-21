@@ -48,9 +48,23 @@ npm run typecheck
 - 投資: 0 以上の整数。空欄は 0。
 - 回収: 整数（0・マイナス可）。空欄は 0。
 
+## リリースビルドと署名
+
+- **アプリ ID:** `io.github.tarokun223.pachishushi`（`app.json` の `android.package` / `ios.bundleIdentifier`）。Google Play に公開したあとは変更できない。公開前なら変更してよい（変えると別のアプリとして扱われ、端末内の記録は引き継がれない）。
+- **署名キー（アップロードキー）:** `C:\Users\<ユーザー>\pachi-keystore\pachi-upload.keystore`（別名 `upload`）。**紛失するとアプリを更新できなくなるので、パスワードごと複数の場所にバックアップすること。** Git には入れない（`.gitignore` 済み）。
+- **キーの設定:** 鍵の場所とパスワードは、Git に入れない `~/.gradle/gradle.properties` に書く。
+  ```
+  PACHI_UPLOAD_STORE_FILE=C:/Users/<ユーザー>/pachi-keystore/pachi-upload.keystore
+  PACHI_UPLOAD_STORE_PASSWORD=...
+  PACHI_UPLOAD_KEY_ALIAS=upload
+  PACHI_UPLOAD_KEY_PASSWORD=...
+  ```
+  設定が無い PC では、デバッグ鍵で署名される（動作確認はできるが、Google Play には登録できない）。この切り替えは `plugins/withReleaseSigning.js`（Expo 設定プラグイン）が `expo prebuild` のたびに自動で組み込む。
+- **ビルド:** `npx expo prebuild --platform android` のあと、`android/` で `gradlew bundleRelease`（Play 用 AAB）または `gradlew assembleRelease`（端末用 APK）。更新のたびに `app.json` の `android.versionCode` を 1 ずつ増やす。
+- **権限:** 使っていない権限（ネットワーク・ストレージ・他アプリの上に表示・振動）は `android.blockedPermissions` で外している。ネットワークを使う機能を足すときは `INTERNET` を外すこと。
+
 ## 公開前に必要な設定
 
-- `app.json` の `ios.bundleIdentifier` / `android.package` は仮の値（`com.example.pachibalance`）。ストア公開前に自分の ID に変更する。
 - アプリのアイコンは「ギラギラ看板」風の丸型デザイン（元の絵は `design/icon.svg`。文字は Noto Sans JP Black）。`assets/` の画像は、これを 1024×1024 で書き出したもの。Android の適応型アイコンは、丸く切り抜かれる中央部分にデザインが収まるよう縮小して配置してある。
 
 ## 収支画面
