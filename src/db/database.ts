@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { ImportMode } from '../domain/backup';
 import type { PlayRecord, RecordInput, Unit } from '../domain/types';
 
 export const DATABASE_NAME = 'balance.db';
@@ -148,33 +149,72 @@ export async function listRecords(db: SQLiteDatabase): Promise<PlayRecord[]> {
   return rows.map(toRecord);
 }
 
+/** 記録を1件追加する（トランザクションは呼び出し側で張る） */
+async function insertRow(db: SQLiteDatabase, input: RecordInput, now: string): Promise<number> {
+  const result = await db.runAsync(
+    `INSERT INTO records
+       (date, unit, investment, recovery, lend_per_1000, exchange_per_1000,
+        lottery_number, applicants, machine, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.date,
+      input.unit,
+      input.investment,
+      input.recovery,
+      input.lendPer1000,
+      input.exchangePer1000,
+      input.lotteryNumber,
+      input.applicants,
+      input.machine,
+      now,
+      now,
+    ],
+  );
+  return result.lastInsertRowId;
+}
+
 export async function insertRecord(db: SQLiteDatabase, input: RecordInput): Promise<number> {
-  const now = new Date().toISOString();
   let id = 0;
   await db.withTransactionAsync(async () => {
-    const result = await db.runAsync(
-      `INSERT INTO records
-         (date, unit, investment, recovery, lend_per_1000, exchange_per_1000,
-          lottery_number, applicants, machine, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.date,
-        input.unit,
-        input.investment,
-        input.recovery,
-        input.lendPer1000,
-        input.exchangePer1000,
-        input.lotteryNumber,
-        input.applicants,
-        input.machine,
-        now,
-        now,
-      ],
-    );
-    id = result.lastInsertRowId;
+    id = await insertRow(db, input, new Date().toISOString());
     await restoreMachine(db, input.machine);
   });
   return id;
+}
+
+export interface ImportOptions {
+  /** add: いまの記録に追加する / replace: いまの記録をすべて消して置き換える */
+  mode: ImportMode;
+  /** バックアップに入っていた、入力候補から外した機種名 */
+  dismissedMachines: readonly string[];
+}
+
+/**
+ * バックアップの記録をまとめて取り込む。すべてひとつのトランザクションで行うので、
+ * 途中で失敗したら何も変わらない（置き換えの途中で記録が消えたままになることはない）。
+ * 記録はファイルの順に追加されるので、同じ日の記録の並びも保たれる。
+ */
+export async function importRecords(
+  db: SQLiteDatabase,
+  records: readonly RecordInput[],
+  options: ImportOptions,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    if (options.mode === 'replace') {
+      await db.runAsync('DELETE FROM records');
+      await db.runAsync('DELETE FROM dismissed_machines');
+    }
+    for (const r of records) await insertRow(db, r, now);
+
+    // 候補から外した機種は、読み込んだ記録で使われていなければ引き継ぐ。
+    // 使われている機種は、通常の記録と同じく候補に戻す。
+    const used = new Set(records.map((r) => r.machine).filter((m) => m !== ''));
+    for (const name of options.dismissedMachines) {
+      if (!used.has(name)) await dismissMachine(db, name);
+    }
+    for (const name of used) await restoreMachine(db, name);
+  });
 }
 
 /** 更新できたら true、該当 id が無ければ false */

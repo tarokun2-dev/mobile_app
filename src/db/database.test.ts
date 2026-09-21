@@ -8,6 +8,7 @@ import type { RecordInput } from '../domain/types';
 import {
   deleteRecord,
   dismissMachine,
+  importRecords,
   insertRecord,
   listDismissedMachines,
   listRecords,
@@ -420,5 +421,110 @@ describe('マイグレーション v3 → v4（機種候補テーブルの追加
     expect(await listDismissedMachines(db)).toEqual(['北斗の拳']);
     const v = raw.prepare('PRAGMA user_version').get() as { user_version: number };
     expect(v.user_version).toBe(4);
+  });
+});
+
+describe('バックアップの一括読み込み（importRecords）', () => {
+  let db: SQLiteDatabase;
+
+  beforeEach(async () => {
+    ({ db } = createTestDb());
+    await migrateDatabase(db);
+  });
+
+  const dates = async () => (await listRecords(db)).map((r) => `${r.date}:${r.machine}`);
+
+  it('置き換え: いまの記録と候補の設定をすべて消して、ファイルの内容にする', async () => {
+    await insertRecord(db, input({ date: '2026-01-01', machine: '古い機種' }));
+    await dismissMachine(db, '古い候補');
+
+    await importRecords(
+      db,
+      [input({ date: '2026-05-01', machine: 'A' }), input({ date: '2026-05-02', machine: 'B' })],
+      { mode: 'replace', dismissedMachines: ['ガンダム'] },
+    );
+
+    expect(await dates()).toEqual(['2026-05-02:B', '2026-05-01:A']);
+    expect(await listDismissedMachines(db)).toEqual(['ガンダム']);
+  });
+
+  it('置き換え: 0 件のファイルなら、記録が空になる', async () => {
+    await insertRecord(db, input());
+    await importRecords(db, [], { mode: 'replace', dismissedMachines: [] });
+    expect(await listRecords(db)).toEqual([]);
+  });
+
+  it('追加: いまの記録は残り、ファイルの記録が加わる。外した候補は和集合になる', async () => {
+    await insertRecord(db, input({ date: '2026-01-01', machine: '既存' }));
+    await dismissMachine(db, '既存の候補');
+
+    await importRecords(db, [input({ date: '2026-05-01', machine: 'A' })], {
+      mode: 'add',
+      dismissedMachines: ['新しい候補'],
+    });
+
+    expect(await dates()).toEqual(['2026-05-01:A', '2026-01-01:既存']);
+    expect((await listDismissedMachines(db)).sort()).toEqual(['既存の候補', '新しい候補'].sort());
+  });
+
+  it('追加: 外した候補があっても、それを使う記録を追加したら候補に戻る。無関係な候補は触らない', async () => {
+    await insertRecord(db, input({ machine: '既存で使用中' }));
+    await dismissMachine(db, '既存で使用中'); // 記録は残したまま候補から外している
+    await dismissMachine(db, 'X');
+
+    await importRecords(db, [input({ machine: 'X' })], { mode: 'add', dismissedMachines: [] });
+
+    // X は読み込んだ記録で使われたので候補に戻る。既存の「使用中」は外したまま
+    expect(await listDismissedMachines(db)).toEqual(['既存で使用中']);
+  });
+
+  it('ファイルの中で、記録に使われている機種が外した候補にも入っていたら、使用中を優先して候補に残す', async () => {
+    await importRecords(db, [input({ machine: 'A' })], { mode: 'replace', dismissedMachines: ['A', 'B'] });
+    expect(await listDismissedMachines(db)).toEqual(['B']);
+  });
+
+  it('同じ日の記録は、ファイルの順に取り込まれ、並びが保たれる', async () => {
+    await importRecords(
+      db,
+      [input({ date: '2026-05-01', machine: '1番目' }), input({ date: '2026-05-01', machine: '2番目' })],
+      { mode: 'replace', dismissedMachines: [] },
+    );
+    // 同じ日は新しく作った記録（あとに入れたもの）が先に表示される
+    expect(await dates()).toEqual(['2026-05-01:2番目', '2026-05-01:1番目']);
+  });
+
+  it('途中で失敗したら、何も変わらない（置き換えでも、いまの記録は消えない）', async () => {
+    const keep = await insertRecord(db, input({ machine: '残るはず' }));
+    await dismissMachine(db, '残る候補');
+
+    await expect(
+      importRecords(db, [input({ machine: 'OK' }), input({ investment: -1 })], {
+        mode: 'replace',
+        dismissedMachines: ['新しい'],
+      }),
+    ).rejects.toThrow();
+
+    const list = await listRecords(db);
+    expect(list.map((r) => [r.id, r.machine])).toEqual([[keep, '残るはず']]);
+    expect(await listDismissedMachines(db)).toEqual(['残る候補']);
+  });
+
+  it('追加の途中で失敗した場合も、追加分は残らない', async () => {
+    await insertRecord(db, input({ machine: '既存' }));
+    await expect(
+      importRecords(db, [input({ machine: 'OK' }), input({ unit: 'medal', lendPer1000: null })], {
+        mode: 'add',
+        dismissedMachines: [],
+      }),
+    ).rejects.toThrow();
+    expect((await listRecords(db)).map((r) => r.machine)).toEqual(['既存']);
+  });
+
+  it('大量（5,000件）でも取り込める', async () => {
+    const many = Array.from({ length: 5000 }, (_, i) =>
+      input({ date: `2026-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`, recovery: i }),
+    );
+    await importRecords(db, many, { mode: 'replace', dismissedMachines: [] });
+    expect(await listRecords(db)).toHaveLength(5000);
   });
 });

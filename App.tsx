@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DATABASE_NAME, migrateDatabase } from './src/db/database';
 import type { RootStackParamList, TabParamList } from './src/navigation/types';
+import { BackupScreen } from './src/screens/BackupScreen';
 import { RecordFormScreen } from './src/screens/RecordFormScreen';
 import { RecordListScreen } from './src/screens/RecordListScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
@@ -37,6 +38,11 @@ function Tabs() {
         name="Stats"
         component={StatsScreen}
         options={{ title: '収支', headerTitle: '収支', tabBarIcon: tabIcon('📊') }}
+      />
+      <Tab.Screen
+        name="Backup"
+        component={BackupScreen}
+        options={{ title: 'データ', headerTitle: 'データのバックアップ', tabBarIcon: tabIcon('💾') }}
       />
     </Tab.Navigator>
   );

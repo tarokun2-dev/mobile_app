@@ -27,6 +27,9 @@ const MAX_PER_1000 = 100_000;
 const MAX_LOTTERY = 999_999;
 const MAX_MACHINE_LENGTH = 50;
 
+/** 入力チェックの上限値。バックアップの読み込みでも同じ基準で検証する。 */
+export const LIMITS = { MAX_AMOUNT, MAX_PER_1000, MAX_LOTTERY, MAX_MACHINE_LENGTH } as const;
+
 /**
  * 全角数字・全角ピリオド・全角/長音のマイナス・カンマ・空白を正規化する（日本語IMEでの入力対策）。
  * 全角モードで「-」を打つと長音「ー」になるため、それもマイナスとして扱う。

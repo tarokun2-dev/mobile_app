@@ -11,4 +11,5 @@ export type TabParamList = {
    */
   Records: { month?: string; nonce?: number } | undefined;
   Stats: undefined;
+  Backup: undefined;
 };

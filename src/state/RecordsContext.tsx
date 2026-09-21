@@ -13,6 +13,8 @@ import { Text, View } from 'react-native';
 import {
   deleteRecord,
   dismissMachine as dismissMachineInDb,
+  importRecords as importRecordsInDb,
+  type ImportOptions,
   insertRecord,
   listDismissedMachines,
   listRecords,
@@ -31,6 +33,8 @@ interface RecordsValue {
   dismissedMachines: ReadonlySet<string>;
   /** 機種を入力候補から外す。過去の記録は変更しない。 */
   dismissMachine: (name: string) => Promise<void>;
+  /** バックアップの記録を取り込む（追加 または 置き換え）。途中で失敗したら何も変わらない。 */
+  importRecords: (records: readonly RecordInput[], options: ImportOptions) => Promise<void>;
 }
 
 const RecordsContext = createContext<RecordsValue | null>(null);
@@ -73,6 +77,10 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       dismissedMachines: dismissed,
       dismissMachine: async (name) => {
         await dismissMachineInDb(db, name);
+        await reload();
+      },
+      importRecords: async (inputs, options) => {
+        await importRecordsInDb(db, inputs, options);
         await reload();
       },
     }),
