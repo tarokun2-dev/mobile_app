@@ -1,4 +1,4 @@
-# パチ収支帳
+# パチ収支
 
 パチンコ・パチスロの収支を記録するモバイルアプリ（Android / iOS、日本語のみ）。仕様は [仕様.txt](仕様.txt) を参照。
 
@@ -51,7 +51,7 @@ npm run typecheck
 ## 公開前に必要な設定
 
 - `app.json` の `ios.bundleIdentifier` / `android.package` は仮の値（`com.example.pachibalance`）。ストア公開前に自分の ID に変更する。
-- アプリのアイコン・スプラッシュは Expo の初期画像のまま。
+- アプリのアイコンは「ギラギラ看板」風の丸型デザイン（元の絵は `design/icon.svg`。文字は Noto Sans JP Black）。`assets/` の画像は、これを 1024×1024 で書き出したもの。Android の適応型アイコンは、丸く切り抜かれる中央部分にデザインが収まるよう縮小して配置してある。
 
 ## 収支画面
 
